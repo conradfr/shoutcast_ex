@@ -35,6 +35,8 @@ defmodule Shoutcast do
 
     {:ok, data} = read_body(offset + 4081, ref, <<>>)
 
+    :hackney.close(ref)
+
     {meta_length, meta} = extract_meta(data, offset)
 
     {:ok,
