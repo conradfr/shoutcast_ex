@@ -89,7 +89,7 @@ defmodule Shoutcast do
     |> String.trim_trailing(<<0>>)
     |> String.split(";")
     |> Enum.map(&String.split(&1, "="))
-    |> Enum.reject(&(&1 == [""]))
+    |> Enum.reject(&(&1 == [""] || Kernel.length(&1) > 2))
     |> Enum.map(fn [k, v] -> {k, String.trim(v, "'")} end)
     |> Enum.into(%{})
   end
