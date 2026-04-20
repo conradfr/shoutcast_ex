@@ -1,13 +1,14 @@
 defmodule Shoutcast do
 
   defmodule Meta do
-    defstruct [:offset, :length, :data, :raw, :string]
+    defstruct [:offset, :length, :data, :raw, :string, :location]
     @type t :: %__MODULE__{
       data: map,
       offset: integer,
       length: integer,
       raw: binary,
-      string: String.t
+      string: String.t,
+      location: String.t
     }
   end
 
@@ -31,21 +32,37 @@ defmodule Shoutcast do
   def read_meta(url, opts \\ []) do
     {:ok, _status, headers, ref} = :hackney.get(url, [{'Icy-Metadata', '1'}], "", opts)
 
-    offset = get_offset(headers)
+    try do
+      location = :hackney.location(ref)
+      offset = get_offset(headers)
 
-    {:ok, data} = read_body(offset + 4081, ref, <<>>)
+      case offset do
+        nil ->
+          :hackney.close(ref)
+          {:error, nil}
 
-    {meta_length, meta} = extract_meta(data, offset)
+        _ ->
+          {:ok, data} = read_body(offset + 4081, ref, <<>>)
+          {meta_length, meta} = extract_meta(data, offset)
 
-    {:ok,
-      %Meta{
-        data: process_meta(meta),
-        offset: offset,
-        length: meta_length,
-        raw: meta,
-        string: String.trim(meta, <<0>>)
-      }
-    }
+          :hackney.close(ref)
+
+          {:ok,
+            %Meta{
+              data: process_meta(meta),
+              offset: offset,
+              length: meta_length,
+              raw: meta,
+              string: String.trim(meta, <<0>>),
+              location: location
+            }
+          }
+      end
+    rescue
+      e ->
+        :hackney.close(ref)
+        {:error, e}
+    end
   end
 
   # Stream the body until we get what we want.
@@ -59,12 +76,12 @@ defmodule Shoutcast do
 
   defp read_body(_, _, acc), do: {:ok, acc}
 
-  # Get the byte offset from the `icy-metaint` header.
+# Get the byte offset from the `icy-metaint` header.
   defp get_offset(headers) do
-    headers
-    |> Enum.into(%{})
-    |> Map.get("icy-metaint")
-    |> String.to_integer()
+    case headers |> Enum.into(%{}) |> Map.get("icy-metaint") do
+      metaint when is_binary(metaint) -> String.to_integer(metaint)
+      _ -> nil
+    end
   end
 
   # Extract the meta data from the binary file stream.
